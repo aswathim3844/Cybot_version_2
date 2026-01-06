@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cy-Bot - Kerala Cyber Law Assistant</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary-blue: #007bff;
+            --bg-gray: #f8fafc;
+            --text-dark: #1e293b;
+            --card-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            --success-green: #10b981;
+        }
+
+        body { font-family: 'Inter', sans-serif; background-color: var(--bg-gray); margin: 0; display: flex; justify-content: center; height: 100vh; color: var(--text-dark); }
+
+        /* Main Content Layout - Centered and Minimal */
+        .main-content { width: 100%; max-width: 900px; display: flex; flex-direction: column; padding: 20px; overflow: hidden; }
+        .chat-wrapper { width: 100%; height: 100%; display: flex; flex-direction: column; background: white; border-radius: 16px; box-shadow: var(--card-shadow); overflow: hidden; }
+
+        /* Top Header */
+        .chat-header { background: var(--primary-blue); color: white; padding: 15px 25px; display: flex; align-items: center; gap: 12px; font-weight: 600; font-size: 1.1em; }
+
+        /* Message Area with Welcome Card */
+        .messages-container { flex: 1; padding: 25px; overflow-y: auto; background: #fafafa; display: flex; flex-direction: column; gap: 20px; }
+
+        .welcome-card { background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+        .welcome-card h2 { margin-top: 0; font-size: 1.2em; display: flex; align-items: center; gap: 10px; }
+        .welcome-card ul { padding-left: 20px; color: #64748b; font-size: 0.95em; line-height: 1.8; }
+
+        .message { padding: 12px 18px; border-radius: 15px; max-width: 80%; line-height: 1.6; font-size: 0.95em; }
+        .user { align-self: flex-end; background: var(--primary-blue); color: white; border-bottom-right-radius: 2px; }
+        .bot { align-self: flex-start; background: #f1f3f4; color: #333; border-bottom-left-radius: 2px; border: 1px solid #e2e8f0; }
+
+
+
+        /* Input Area with Integrated Upload */
+        .input-container { padding: 20px; background: white; border-top: 1px solid #f1f5f9; display: flex; flex-direction: column; gap: 8px; }
+        .input-row { display: flex; gap: 12px; align-items: center; }
+        input[type="text"] { flex: 1; padding: 12px 20px; border: 1px solid #e2e8f0; border-radius: 30px; outline: none; background: #f8fafc; font-size: 1em; }
+
+        /* Attachment Status */
+        .upload-status { display: none; font-size: 0.85em; color: var(--success-green); padding-left: 45px; display: flex; align-items: center; gap: 8px; }
+        .btn-remove-file { color: #ef4444; cursor: pointer; font-size: 0.9em; }
+
+        .send-btn { background: var(--primary-blue); color: white; border: none; width: 42px; height: 42px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
+        .send-btn:hover { background: #0056b3; }
+
+        .footer-info { text-align: center; font-size: 0.75em; color: #94a3b8; padding: 10px 0; line-height: 1.4; }
+    </style>
+</head>
+<body>
+
+<div class="main-content">
+    <div class="chat-wrapper">
+        <div class="chat-header">
+            <i class="fas fa-user-shield"></i> Cy-Bot Cyber Legal Assistant
+        </div>
+
+        <div class="messages-container" id="messageBox">
+            <div class="welcome-card">
+                <h2>👋 Welcome to Cy-Bot</h2>
+                <p>Your trusted assistant for Kerala cyber law and digital safety.</p>
+                <p><strong>Common queries:</strong></p>
+                <ul>
+                    <li>"I lost money in an online scam."</li>
+                    <li>"How do I report cyber harassment?"</li>
+                    <li>"Is this suspicious link a fraud?"</li>
+                </ul>
+            </div>
+            <div class="message bot">Hello! How can I assist you today? You can type a message or attach a legal document using the paperclip icon.</div>
+        </div>
+
+
+
+        <div class="input-container">
+            <div id="uploadStatus" class="upload-status">
+                <i class="fas fa-file-pdf"></i> <span id="attachedFileName"></span>
+                <i class="fas fa-times-circle btn-remove-file" onclick="removeAttachment()" title="Remove file"></i>
+            </div>
+
+            <div class="input-row">
+                <input type="file" id="chatPdfInput" hidden accept="application/pdf" onchange="handleChatUpload()">
+
+                <i class="fas fa-paperclip" style="color:#94a3b8; cursor:pointer; font-size: 1.2em;"
+                   onclick="document.getElementById('chatPdfInput').click()" title="Attach PDF"></i>
+
+                <input type="text" id="userInput" placeholder="Ask Cy-Bot a question..." onkeypress="handleEnter(event)">
+
+                <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+
+            <div class="footer-info">
+                Powered by <strong>Kerala Police Cyberdome</strong><br>
+                Secure analysis for legal guidance. Not a substitute for professional legal counsel.
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentSessionPdfId = null;
+
+    // --- INTEGRATED PDF UPLOAD ---
+    async function handleChatUpload() {
+        const fileInput = document.getElementById('chatPdfInput');
+        const statusDiv = document.getElementById('uploadStatus');
+        const fileNameSpan = document.getElementById('attachedFileName');
+
+        if (!fileInput.files.length) return;
+        const file = fileInput.files[0];
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        fileNameSpan.innerText = "Analyzing " + file.name + "...";
+        statusDiv.style.display = "flex";
+
+        try {
+            const response = await fetch('/api/chat/upload_session', { method: 'POST', body: formData });
+            const data = await response.json();
+
+            if (data.session_id) {
+                currentSessionPdfId = data.session_id;
+                fileNameSpan.innerText = file.name;
+                addMessage('bot', `Successfully analyzed <b>${file.name}</b>. You can now ask questions about this document.`);
+            } else {
+                alert("Upload failed: " + data.message);
+                removeAttachment();
+            }
+        } catch (e) {
+            alert("Error connecting to server.");
+            removeAttachment();
+        }
+    }
+
+    function removeAttachment() {
+        currentSessionPdfId = null;
+        document.getElementById('chatPdfInput').value = "";
+        document.getElementById('uploadStatus').style.display = "none";
+    }
+
+
+
+    async function sendMessage() {
+        const inputField = document.getElementById('userInput');
+        const query = inputField.value.trim();
+        if (!query) return;
+
+        addMessage('user', query);
+        inputField.value = '';
+
+        const loadingId = "loading-" + Date.now();
+        addMessage('bot', `<i class="fas fa-circle-notch fa-spin"></i> Consulting Kerala Cyber Laws...`, loadingId);
+
+        try {
+            const response = await fetch('/api/query', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    query: query,
+                    session_pdf_id: currentSessionPdfId
+                })
+            });
+
+            const data = await response.json();
+            const botDiv = document.getElementById(loadingId);
+            botDiv.innerHTML = data.response || "I'm having trouble connecting to the brain. Is Ollama running?";
+
+        } catch (error) {
+            document.getElementById(loadingId).innerHTML = "System Error. Please try again later.";
+        }
+    }
+
+    function addMessage(sender, text, id = null) {
+        const messageBox = document.getElementById('messageBox');
+        const div = document.createElement('div');
+        div.className = `message ${sender}`;
+        if (id) div.id = id;
+        div.innerHTML = text;
+        messageBox.appendChild(div);
+        messageBox.scrollTop = messageBox.scrollHeight;
+    }
+
+    function handleEnter(e) { if (e.key === 'Enter') sendMessage(); }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,20 @@
+# Python junk
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# Sensitive Info
+.env
+
+# Project specific
+uploads/
+*.pdf
+faiss_index/
+intent_classifier.pkl
+.env
+__pycache__/
+venv/
+.venv/
+*.pyc

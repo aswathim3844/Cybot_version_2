@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Universal Admin Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7f6; margin: 0; padding: 20px; }
+        .navbar { background: #2c3e50; color: white; padding: 15px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }
+
+        /* PDF Ingestion Section */
+        .ingest-card { border-left: 5px solid #17a2b8; background: #fdfdfd; }
+        .preview-box { width: 100%; height: 300px; margin-top: 10px; padding: 10px; font-family: 'Courier New', monospace; border: 1px solid #ddd; border-radius: 5px; background: #fff; resize: vertical; }
+
+        /* Controls */
+        select { padding: 10px; font-size: 1rem; border-radius: 5px; border: 1px solid #ccc; width: 300px; cursor: pointer; }
+        .btn { padding: 10px 18px; border: none; border-radius: 5px; cursor: pointer; color: white; font-weight: 600; transition: background 0.2s; }
+        .btn-add { background: #27ae60; } .btn-add:hover { background: #219150; }
+        .btn-edit { background: #f39c12; }
+        .btn-del { background: #c0392b; }
+        .btn-hist { background: #34495e; }
+        .btn-preview { background: #17a2b8; }
+
+        /* Table Styling */
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th { background: #ecf0f1; padding: 12px; text-align: left; color: #2c3e50; border-bottom: 2px solid #ddd; }
+        td { padding: 12px; border-bottom: 1px solid #eee; font-size: 0.95em; color: #444; }
+        tr:hover { background-color: #f9f9f9; }
+
+        /* Modals */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; }
+        .modal-content { background: white; margin: 5% auto; padding: 25px; width: 700px; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); max-height: 85vh; overflow-y: auto; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; font-weight: bold; margin-bottom: 5px; color: #333; }
+        .form-group input, .form-group textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
+
+        /* Restricted Style for Audit View */
+        .vault-active { border: 2px solid #c0392b !important; }
+    </style>
+</head>
+<body>
+
+<div class="navbar">
+    <h2>🛡️ Universal Admin Panel</h2>
+    <button class="btn btn-del" onclick="logout()">Logout</button>
+</div>
+
+<div class="container ingest-card" id="pdfSection">
+    <h3><i class="fas fa-file-pdf"></i> Bulk Ingest Legal PDF</h3>
+    <p style="color: #666; font-size: 0.9em;">Upload laws or manuals. System cleans headers/footers and creates searchable embeddings.</p>
+
+    <div style="display: flex; gap: 15px; align-items: center;">
+        <input type="file" id="pdfFile" accept=".pdf" style="padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+        <button class="btn btn-preview" onclick="previewPDF()">1. Preview & Extract</button>
+    </div>
+
+    <div id="previewArea" style="display:none; margin-top: 25px;">
+        <label><strong>Review and Edit Extracted Text:</strong></label>
+        <textarea id="extractedText" class="preview-box"></textarea>
+        <div style="margin-top: 15px; display: flex; align-items: center; gap: 15px;">
+            <button class="btn btn-add" id="confirmBtn" onclick="confirmIngestion()">2. Confirm & Index in Knowledge Base</button>
+            <span id="ingestLoading" style="display:none; color: #007bff; font-weight: bold;">
+                 <i class="fas fa-spinner fa-spin"></i> Generating vectors & saving to DB...
+            </span>
+        </div>
+    </div>
+</div>
+
+<div class="container" id="mainContainer">
+    <div style="display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 1px solid #eee; padding-bottom: 15px;">
+        <div>
+            <label><strong>Select Table to Manage:</strong></label><br>
+            <select id="tableSelector" onchange="loadData()">
+                <option value="cyber_laws">📜 Cyber Laws (Core Knowledge)</option>
+                <option value="scam_advisories">⚠️ Scam Advisories</option>
+                <option value="cybercells">🚓 Police Directory</option>
+                <option value="legal_guidance">📘 Legal Guidance (FAQs)</option>
+                <option value="reporting_procedures">📝 Reporting Procedures</option>
+                <option value="user_queries">💬 User Query Examples</option>
+                <option value="audit_logs">🔐 Secure Audit Vault (Restricted)</option>
+            </select>
+        </div>
+        <button class="btn btn-add" id="addNewBtn" onclick="openModal('create')"><i class="fas fa-plus"></i> Add New Record</button>
+    </div>
+
+    <div id="loading" style="display:none; text-align: center; padding: 20px; color: #007bff;">
+        <i class="fas fa-spinner fa-spin fa-2x"></i><br>Fetching Secure Data...
+    </div>
+
+    <table id="dataTable">
+        <thead><tr id="tableHeaders"></tr></thead>
+        <tbody id="tableBody"></tbody>
+    </table>
+</div>
+
+<div id="crudModal" class="modal">
+    <div class="modal-content">
+        <h3 id="modalTitle">Edit Record</h3>
+        <div id="dynamicForm"></div>
+        <div style="margin-top: 25px; text-align: right; border-top: 1px solid #eee; padding-top: 15px;">
+            <button class="btn" onclick="closeModal('crudModal')" style="background:#95a5a6;">Cancel</button>
+            <button class="btn btn-add" onclick="saveRecord()">Save Changes</button>
+        </div>
+    </div>
+</div>
+
+<div id="historyModal" class="modal">
+    <div class="modal-content">
+        <h3>🕰️ Version History</h3>
+        <div id="historyList"></div>
+        <button class="btn" onclick="closeModal('historyModal')" style="background:#95a5a6; margin-top:20px;">Close</button>
+    </div>
+</div>
+
+<script>
+    const TOKEN = localStorage.getItem('admin_token');
+    if (!TOKEN) window.location.href = '/login';
+
+    let lastSafeTable = 'cyber_laws';
+
+    async function logout() {
+        try {
+            await fetch('/api/logout_log', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + TOKEN }
+            });
+        } catch(e) { console.log("Logout log failed"); }
+        localStorage.removeItem('admin_token');
+        window.location.href='/login';
+    }
+
+    const SCHEMA = {
+        'cyber_laws': { pk: 'law_section_id', fields: ['chapter', 'section', 'section_name', 'description', 'punishment'], readOnly: false },
+        'scam_advisories': { pk: 'advisory_id', fields: ['title', 'risk_level', 'details', 'prevention_tips'], readOnly: false },
+        'cybercells': { pk: 'cell_id', fields: ['district', 'location', 'contact_info', 'email'], readOnly: false },
+        'legal_guidance': { pk: 'guidance_id', fields: ['topic', 'description', 'related_sections'], readOnly: false },
+        'reporting_procedures': { pk: 'procedure_id', fields: ['step_number', 'title', 'details'], readOnly: false },
+        'user_queries': { pk: 'query_id', fields: ['query', 'category', 'law_section'], readOnly: false },
+        'audit_logs': { pk: 'log_id', fields: ['table_name', 'action_type', 'changed_by', 'changed_at'], readOnly: true }
+    };
+
+    let currentTable = 'cyber_laws';
+    let currentData = [];
+    let editId = null;
+    let currentFilename = "";
+
+    async function loadData() {
+        const selector = document.getElementById('tableSelector');
+        currentTable = selector.value;
+        let vaultKey = "";
+
+        // 🔒 SECURE VAULT ACCESS
+        if (currentTable === 'audit_logs') {
+            vaultKey = prompt("🔐 Enter System Vault Key to view Immutable Logs:");
+            if (!vaultKey) {
+                selector.value = lastSafeTable;
+                return;
+            }
+        }
+
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('tableBody').innerHTML = '';
+
+        // UI Security: Toggle availability of non-read functions
+        const isReadOnly = SCHEMA[currentTable].readOnly;
+        document.getElementById('addNewBtn').style.display = isReadOnly ? 'none' : 'block';
+        document.getElementById('pdfSection').style.display = isReadOnly ? 'none' : 'block';
+        if(isReadOnly) document.getElementById('mainContainer').classList.add('vault-active');
+        else document.getElementById('mainContainer').classList.remove('vault-active');
+
+        try {
+            const res = await fetch(`/api/admin/universal/${currentTable}`, {
+                headers: {
+                    'Authorization': 'Bearer ' + TOKEN,
+                    'X-Vault-Key': vaultKey
+                }
+            });
+
+            if (res.status === 403) {
+                alert("❌ ACCESS DENIED: Incorrect Vault Key.");
+                selector.value = lastSafeTable;
+                loadData();
+                return;
+            }
+
+            if (!res.ok) throw new Error();
+
+            currentData = await res.json();
+            lastSafeTable = currentTable;
+            renderTable();
+        } catch(e) {
+            document.getElementById('tableBody').innerHTML = `<tr><td colspan="10" style="color:red; text-align:center;">⚠️ Security Block or Connection Error.</td></tr>`;
+        }
+        document.getElementById('loading').style.display = 'none';
+    }
+
+    function renderTable() {
+        const config = SCHEMA[currentTable];
+        const thead = document.getElementById('tableHeaders');
+        const tbody = document.getElementById('tableBody');
+
+        let hHtml = `<th>ID</th>`;
+        config.fields.forEach(f => hHtml += `<th>${f.replace('_',' ').toUpperCase()}</th>`);
+        if (!config.readOnly) hHtml += `<th>ACTIONS</th>`;
+        thead.innerHTML = hHtml;
+
+        tbody.innerHTML = '';
+        currentData.forEach(row => {
+            let rHtml = `<tr><td>${row[config.pk]}</td>`;
+            config.fields.forEach(f => {
+                let val = row[f] || '-';
+                if (f === 'changed_at') val = new Date(val).toLocaleString();
+                if(val.toString().length > 50) val = val.substring(0,50)+'...';
+                rHtml += `<td>${val}</td>`;
+            });
+
+            if (!config.readOnly) {
+                rHtml += `<td>
+                    <div style="display:flex; gap:5px;">
+                        <button class="btn btn-edit" style="padding:5px 10px;" onclick="openModal('edit', ${row[config.pk]})"><i class="fas fa-edit"></i></button>
+                        <button class="btn btn-hist" style="padding:5px 10px;" onclick="viewHistory(${row[config.pk]})"><i class="fas fa-history"></i></button>
+                        <button class="btn btn-del" style="padding:5px 10px;" onclick="deleteRec(${row[config.pk]})"><i class="fas fa-trash"></i></button>
+                    </div>
+                </td></tr>`;
+            } else { rHtml += `</tr>`; }
+            tbody.innerHTML += rHtml;
+        });
+    }
+
+    // --- HELPER FUNCTIONS ---
+    async function previewPDF() {
+        const fileInput = document.getElementById('pdfFile');
+        if (!fileInput.files[0]) return alert("Select a PDF file first.");
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        const res = await fetch('/api/admin/pdf/preview/', { method: 'POST', headers: { 'Authorization': 'Bearer ' + TOKEN }, body: formData });
+        const data = await res.json();
+        if (res.ok) { currentFilename = data.filename; document.getElementById('extractedText').value = data.preview_text; document.getElementById('previewArea').style.display = 'block'; }
+    }
+
+    async function confirmIngestion() {
+        const text = document.getElementById('extractedText').value;
+        const loader = document.getElementById('ingestLoading');
+        loader.style.display = 'inline';
+        const res = await fetch('/api/admin/pdf/confirm/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN }, body: JSON.stringify({ filename: currentFilename, final_text: text }) });
+        if (res.ok) location.reload(); else alert("Error");
+    }
+
+    function openModal(mode, id) {
+        editId = id || null;
+        document.getElementById('crudModal').style.display = 'block';
+        const config = SCHEMA[currentTable];
+        const record = editId ? currentData.find(r => r[config.pk] === id) : {};
+        const container = document.getElementById('dynamicForm');
+        container.innerHTML = '';
+        config.fields.forEach(f => {
+            if (f === 'timestamp' || f === 'changed_at') return;
+            const val = record[f] || '';
+            const tag = (f.includes('query') || f.includes('details') || f.includes('description')) ? 'textarea rows="6"' : 'input type="text"';
+            container.innerHTML += `<div class="form-group"><label>${f.replace('_',' ').toUpperCase()}</label><${tag} id="field_${f}" class="form-control">${val}</${tag.split(' ')[0]}></div>`;
+        });
+    }
+
+    async function saveRecord() {
+        const config = SCHEMA[currentTable];
+        const payload = {};
+        config.fields.forEach(f => { if (f !== 'timestamp') payload[f] = document.getElementById(`field_${f}`).value; });
+        const method = editId ? 'PUT' : 'POST';
+        const url = editId ? `/api/admin/universal/${currentTable}/${editId}` : `/api/admin/universal/${currentTable}`;
+        const res = await fetch(url, { method, headers: {'Content-Type':'application/json', 'Authorization':'Bearer ' + TOKEN}, body: JSON.stringify(payload) });
+        if(res.ok) { closeModal('crudModal'); loadData(); }
+    }
+
+    async function deleteRec(id) {
+        if(!confirm("Are you sure?")) return;
+        await fetch(`/api/admin/universal/${currentTable}/${id}`, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + TOKEN } });
+        loadData();
+    }
+
+    async function viewHistory(id) {
+        const res = await fetch(`/api/admin/history/${currentTable}/${id}`, { headers: { 'Authorization': 'Bearer ' + TOKEN } });
+        const logs = await res.json();
+        const list = document.getElementById('historyList');
+        list.innerHTML = logs.length === 0 ? "<p>No logs found.</p>" : "";
+        logs.forEach(log => {
+            list.innerHTML += `<div style="border-bottom:1px solid #eee; padding:15px;"><strong>${log.action_type}</strong> by ${log.changed_by} <br><small>${new Date(log.changed_at).toLocaleString()}</small></div>`;
+        });
+        document.getElementById('historyModal').style.display = 'block';
+    }
+
+    function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+    loadData();
+</script>
+
+</body>
+</html>

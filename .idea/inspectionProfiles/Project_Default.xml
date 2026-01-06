@@ -1,0 +1,21 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredPackages">
+        <list>
+          <option value="Flask" />
+          <option value="Werkzeug" />
+          <option value="langchain-community" />
+          <option value="langchain-text-splitters" />
+          <option value="sentence-transformers" />
+          <option value="faiss-cpu" />
+          <option value="joblib" />
+          <option value="numpy" />
+          <option value="python-dotenv" />
+          <option value="tiktoken" />
+        </list>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>

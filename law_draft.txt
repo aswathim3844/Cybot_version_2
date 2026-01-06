@@ -1,0 +1,64 @@
+
+--- Page 1 ---
+Cyber Law in India
+Sl.No Offences Section Under IT Act
+1. Tampering with computer source Documents Sec.65
+2. Hacking with computer systems , Data Alteration Sec.66
+3. Sending offensive messages through communication service, etc Sec.66A
+4. Dishonestly receiving stolen computer resource or communication device Sec.66B
+5. Identity theft Sec.66C
+6. Cheating by personation by using computer resource Sec.66D
+7. Violation of privacy Sec.66E
+8. Cyber terrorism Sec.66F
+9. Publishing or transmitting obscene material in electronic form Sec .67
+10. Publishing or transmitting of material containing sexually explicit act, etc. in electronic form Sec.67A
+11. Punishment for publishing or transmitting of material depicting children in sexually explicit act, etc.
+in electronic form Sec.67B
+11. Preservation and Retention of information by intermediaries Sec.67C
+12. Powers to issue directions for interception or monitoring or decryption of any information through
+any computer resource Sec.69
+13. Power to issue directions for blocking for public access of any information through any computer
+resource Sec.69A
+14. Power to authorize to monitor and collect traffic data or information through any computer resource
+for Cyber Security Sec.69B
+15. Un-authorized access to protected system Sec.70
+16. Penalty for misrepresentation Sec.71
+17. Breach of confidentiality and privacy Sec.72
+18. Publishing False digital signature certificates Sec.73
+19. Publication for fraudulent purpose Sec.74
+29. Act to apply for offence or contraventions committed outside India Sec.75
+21. Compensation, penalties or confiscation not to interfere with other punishment Sec.77
+22. Compounding of Offences Sec.77A
+23. Offences with three years imprisonment to be cognizable Sec.77B
+24. Exemption from liability of intermediary in certain cases Sec.79
+25. Punishment for abetment of offences Sec.84B
+26. Punishment for attempt to commit offences Sec.84C
+Note : Sec.78 of I.T. Act empowers Police Inspector to investigate cases falling under this Act
+27. Offences by Companies Sec.85
+28. Sending threatening messages by e-mail Sec .503 IPC
+29. Word, gesture or act intended to insult the modesty of a woman Sec.509 IPC
+30. Sending defamatory messages by e-mail Sec .499 IPC
+31. Bogus websites , Cyber Frauds Sec .420 IPC
+32. E-mail Spoofing Sec .463 IPC
+33. Making a false document Sec.464 IPC
+34. Forgery for purpose of cheating Sec.468 IPC
+
+--- Page 2 ---
+35. Forgery for purpose of harming reputation Sec.469 IPC
+36. Web-Jacking Sec .383 IPC
+37. E-mail Abuse Sec .500 IPC
+38. Punishment for criminal intimidation Sec.506 IPC
+39. Criminal intimidation by an anonymous communication Sec.507 IPC
+40. When copyright infringed:- Copyright in a work shall be deemed to be infringed Sec.51
+41. Offence of infringement of copyright or other rights conferred by this Act. Any person who knowingly
+infringes or abets the infringement of Sec.63
+42. Enhanced penalty on second and subsequent covictions Sec.63A
+43. Knowing use of infringing copy of computer programme to be an offence Sec.63B
+44. Obscenity Sec. 292 IPC
+45. Printing etc. of grossly indecent or scurrilous matter or matter intended for blackmail Sec.292A IPC
+46. Sale, etc., of obscene objects to young person Sec .293 IPC
+47. Obscene acts and songs Sec.294 IPC
+48. Theft of Computer Hardware Sec. 378
+49. Punishment for theft Sec.379
+50. Online Sale of Drugs NDPS Act
+51. Online Sale of Arms Arms Act.

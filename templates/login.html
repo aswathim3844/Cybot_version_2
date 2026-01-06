@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Login</title>
+    <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #2c3e50; }
+        .login-box { background: white; padding: 40px; border-radius: 8px; width: 300px; text-align: center; }
+        input { width: 100%; padding: 10px; margin: 10px 0; box-sizing: border-box; }
+        button { width: 100%; padding: 10px; background: #e74c3c; color: white; border: none; cursor: pointer; }
+        .error { color: red; font-size: 0.9em; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="login-box">
+        <h2>👮 Admin Access</h2>
+        <input type="text" id="username" placeholder="Username">
+        <input type="password" id="password" placeholder="Password">
+        <button onclick="login()">Login</button>
+        <p class="error" id="errorMsg"></p>
+    </div>
+
+    <script>
+        async function login() {
+            const u = document.getElementById('username').value;
+            const p = document.getElementById('password').value;
+
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ username: u, password: p })
+                });
+
+                const data = await res.json();
+
+                if (res.ok) {
+                    // SAVE TOKEN TO BROWSER STORAGE
+                    localStorage.setItem('admin_token', data.access_token);
+                    window.location.href = '/admin'; // Redirect to dashboard
+                } else {
+                    document.getElementById('errorMsg').innerText = "Invalid Credentials";
+                }
+            } catch (e) {
+                document.getElementById('errorMsg').innerText = "Connection Error";
+            }
+        }
+    </script>
+</body>
+</html>
