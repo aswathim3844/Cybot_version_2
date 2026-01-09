@@ -18,8 +18,9 @@ from dotenv import load_dotenv
 import fitz
 import numpy as np
 from typing import Dict, Any
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_core.documents import Document
+from nltk.tokenize import sent_tokenize
+import numpy as np
+from flask.json.provider import DefaultJSONProvider
 
 # LOAD SECRETS
 load_dotenv()
@@ -34,7 +35,7 @@ DB_NAME = os.getenv("DB_NAME", "cyber_law_db")
 DB_USER = os.getenv("DB_USER", "postgres")
 VAULT_KEY = os.getenv("VAULT_KEY", "CyberVigilance2025")
 
-# --- V1 SYSTEM PROMPT (THE PERSONALITY) ---
+# --- V1 SYSTEM PROMPT ---
 SYSTEM_PROMPT = """
 
 YOUR ROLE
@@ -233,19 +234,17 @@ ADMIN_USERS = {
 # --- GLOBAL STORES ---
 session_pdf_store: Dict[str, Any] = {}
 nltk.download('punkt', quiet=True)
-from nltk.tokenize import sent_tokenize
 
 # --- EMBEDDING MODELS ---
 try:
-    print("Loading Embedding Model...")
-    model = SentenceTransformer('all-MiniLM-L6-v2')
+    print("Loading BGE-Small Model...")
+    model = SentenceTransformer('BAAI/bge-small-en-v1.5')
     print("Loading Re-Ranker Model...")
     reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
 except Exception as e:
     print(f"Error loading models: {e}")
     model = None
     reranker = None
-
 
 # --- HELPERS ---
 def get_db_connection():
@@ -258,63 +257,46 @@ def get_db_connection():
         print(f"Database error: {e}")
         return None
 
+def create_embedding_vector(text):
+    """
+    Upgraded for BGE-Small v1.5 and Version 3 Roadmap.
+    Includes cleaning and explicit type casting.
+    """
+    if not text:
+        return None
 
-def create_embedding_vector(chapter, section_name, description):
-    text_chunk = f"Chapter: {chapter}. Section Name: {section_name}. Details: {description}"
-    return model.encode([text_chunk], convert_to_tensor=False)[0]
+    # 1. CLEANING: Remove special characters that might confuse the embedding model
+    # We keep it simple to preserve the meaning for BGE
+    clean_text = text.replace("'", "").replace('"', "").strip()
 
+    # 2. BGE PREFIX: Required for the 'Query' side of the search
+    # This tells the model to treat this as a question looking for a document answer.
+    instruction = "Represent this sentence for searching relevant passages: "
+    full_text = f"{instruction}{clean_text}"
 
-def chunk_text(text, chunk_size=500):
-    sentences = sent_tokenize(text)
-    chunks = []
-    current_chunk = []
-    current_chunk_length = 0
-    for sentence in sentences:
-        sentence_words = len(sentence.split())
-        if current_chunk_length + sentence_words <= chunk_size:
-            current_chunk.append(sentence)
-            current_chunk_length += sentence_words
-        else:
-            chunks.append(" ".join(current_chunk))
-            overlap_sentences = current_chunk[-3:]
-            current_chunk = overlap_sentences + [sentence]
-            current_chunk_length = sum(len(s.split()) for s in current_chunk)
-    if current_chunk:
-        chunks.append(" ".join(current_chunk))
-    return chunks
+    # 3. ENCODING: Generate the vector
+    # We cast to a standard list immediately to avoid NumPy float32 issues later
+    vector = model.encode([full_text], convert_to_tensor=False)[0]
 
+    return vector.tolist()
 
-def token_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        token = None
-        if 'Authorization' in request.headers:
-            auth_header = request.headers['Authorization']
-            if auth_header.startswith('Bearer '):
-                token = auth_header.split(' ')[1]
-        if not token:
-            return jsonify({'message': 'Token is missing!'}), 401
-        try:
-            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
-            current_user = data['username']
-        except Exception:
-            return jsonify({'message': 'Invalid token'}), 401
-        return f(current_user, *args, **kwargs)
+# --- CUSTOM JSON PROVIDER FOR NUMPY TYPES ---
+class CustomJSONProvider(DefaultJSONProvider):
+    def default(self, obj):
+        # Handle NumPy floating point types (like float32)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        # Handle NumPy integer types
+        if isinstance(obj, np.integer):
+            return int(obj)
+        # Handle NumPy arrays
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
 
-    return decorated
-
-
-def log_event(conn, table, rec_id, action, old_val, new_val, user):
-    try:
-        cur = conn.cursor()
-        cur.execute("""
-            INSERT INTO audit_logs (table_name, record_id, action_type, old_data, new_data, changed_by) 
-            VALUES (%s, %s, %s, %s, %s, %s)
-        """, (table, rec_id, action, json.dumps(old_val, default=str), json.dumps(new_val, default=str), user))
-    except Exception as e:
-        print(f"Audit Logging Error: {e}")
-
-
+# --- INITIALIZE APP ---
+app = Flask(__name__)
+app.json = CustomJSONProvider(app)
 # --- ROUTES ---
 
 @app.route('/api/login', methods=['POST'])
@@ -325,13 +307,9 @@ def login():
     stored_hash = ADMIN_USERS.get(username)
     if stored_hash and bcrypt.checkpw(password.encode('utf-8'), stored_hash.encode('utf-8')):
         conn = get_db_connection()
-        log_event(conn, 'auth', 0, 'LOGIN', None, {"status": "success"}, username)
-        conn.commit()
-        conn.close()
-
+        # Audit logging would go here
         session['admin_logged_in'] = True
         session['admin_user'] = username
-
         expiration = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=24)
         token = jwt.encode({'username': username, 'exp': expiration}, app.config['SECRET_KEY'], algorithm="HS256")
         return jsonify({"message": "Login successful", "access_token": token}), 200
@@ -345,18 +323,12 @@ def chatbot_query():
     if not user_query:
         return jsonify({"message": "Query required"}), 400
 
-    # 1. GREETING & IDENTITY PRE-PROCESSING
+    # 1. GREETING HANDLER
     greetings = ['hi', 'hello', 'hey', 'good morning', 'who are you', 'what are you']
     if any(word in user_query.lower() for word in greetings):
-        try:
-            full_prompt = f"{SYSTEM_PROMPT}\n\nUSER QUERY: {user_query}\n\nINSTRUCTION: The user is greeting you or asking who you are. Respond warmly, introduce yourself as Cy-Bot, and invite them to ask about Kerala cyber laws."
-            ai_res = requests.post('http://localhost:11434/api/generate',
-                                   json={"model": "llama3.2", "prompt": full_prompt, "stream": False}, timeout=60)
-            res_data = ai_res.json()
-            return jsonify({"response": res_data.get('response', 'Hello! I am Cy-Bot.'), "relevant_sections": []}), 200
-        except Exception as e:
-            return jsonify(
-                {"response": "Greetings! I am Cy-Bot. How can I assist you today?", "relevant_sections": []}), 200
+        return jsonify(
+            {"response": "Hello! I am Cy-Bot, your guide to Kerala's Cyber Laws. How can I assist you today?",
+             "relevant_sections": []}), 200
 
     conn = get_db_connection()
     if conn is None:
@@ -364,94 +336,120 @@ def chatbot_query():
     cur = conn.cursor()
 
     try:
-        # Step A: Hybrid Search (Semantic + Keyword)
-        query_embedding = create_embedding_vector("", user_query, "")
+        # --- STEP 1: BGE EMBEDDING PRE-PROCESSING ---
+        # BGE v1.5 requires this specific prefix for the search query
+        bge_prefix = "Represent this sentence for searching relevant passages: "
+        query_vector = model.encode([f"{bge_prefix}{user_query}"], convert_to_tensor=False)[0]
 
-        # Semantic Search Query (Using pgvector)
-        cur.execute("""SELECT c.chapter, c.section, le.section_text, le.embedding <-> %s AS score, c.law_section_id
-                       FROM law_embeddings le 
-                       JOIN cyber_laws c ON le.law_section_id = c.law_section_id 
-                       WHERE (le.embedding <-> %s) < 0.90 
-                       ORDER BY score ASC LIMIT 10;""", (query_embedding, query_embedding))
-        vector_results = cur.fetchall()
+        # Prepare keyword query for Postgres Full Text Search (e.g. 'hacking & law')
+        # We use ' | ' (OR) for broader matching or ' & ' (AND) for precision
+        fts_keywords = " | ".join(user_query.split())
 
-        # Keyword Search Query (Using ILIKE for exact term matching)
-        search_pattern = f"%{user_query}%"
-        cur.execute("""SELECT chapter, section, description, 0.5 as score, law_section_id
-                       FROM cyber_laws 
-                       WHERE description ILIKE %s OR section_name ILIKE %s OR section ILIKE %s
-                       LIMIT 10;""", (search_pattern, search_pattern, search_pattern))
-        keyword_results = cur.fetchall()
+        # --- STEP 2: GLOBAL HYBRID RRF SQL ---
+        # This CTE merges all 6 tables and applies Reciprocal Rank Fusion
+        global_rrf_sql = """
+        WITH all_content AS (
+            SELECT 'Law' as type, chapter || ' ' || section as meta, description as text, law_section_id::text as doc_id FROM cyber_laws
+            UNION ALL
+            SELECT 'Guidance', crime_type, punishment, crime_id::text FROM legal_guidance
+            UNION ALL
+            SELECT 'Procedure', crime_type, procedure, report_id::text FROM reporting_procedures
+            UNION ALL
+            SELECT 'Scam', scam_name, modus_operandi || ' ' || police_advice, scam_id::text FROM scam_advisories
+            UNION ALL
+            SELECT 'Cell', station_name, address || ' PH: ' || phone_number, station_id::text FROM cybercells
+            UNION ALL
+            SELECT 'History', query, category || ' - ' || law_section, query_id::text FROM user_queries
+        ),
+        keyword_search AS (
+          SELECT doc_id, ROW_NUMBER() OVER (
+          ORDER BY ts_rank_cd(to_tsvector('english', text), websearch_to_tsquery('english', %s)) DESC
+          ) as k_rank
+          FROM all_content
+           WHERE to_tsvector('english', text) @@ websearch_to_tsquery('english', %s)
+        ),
+       
+        vector_search AS (
+            SELECT law_section_id::text as doc_id, ROW_NUMBER() OVER (ORDER BY embedding <-> %s ASC) as v_rank
+            FROM law_embeddings
+            WHERE (embedding <-> %s) < 0.90
+        )
+        SELECT 
+            ac.type, ac.meta, ac.text,
+            (COALESCE(1.0 / (60 + k_rank), 0) + COALESCE(1.0 / (60 + v_rank), 0)) as rrf_score
+        FROM all_content ac
+        LEFT JOIN keyword_search ks ON ac.doc_id = ks.doc_id
+        LEFT JOIN vector_search vs ON ac.doc_id = vs.doc_id
+        WHERE k_rank IS NOT NULL OR v_rank IS NOT NULL
+        ORDER BY rrf_score DESC LIMIT 10;
+        """
 
-        # Deduplicate and combine results
-        combined_dict = {}
-        for r in vector_results:
-            combined_dict[r[4]] = {"text": r[2], "meta": f"{r[0]} - {r[1]}", "score": float(r[3])}
-        for r in keyword_results:
-            if r[4] not in combined_dict:
-                combined_dict[r[4]] = {"text": r[2], "meta": f"{r[0]} - {r[1]}", "score": 0.5}
+        cur.execute(global_rrf_sql, (fts_keywords, fts_keywords, query_vector, query_vector))
+        raw_results = cur.fetchall()
 
-        initial_results = list(combined_dict.values())
-        print(f"DEBUG: Found {len(initial_results)} potential matches in DB.", flush=True)
-
-        # Step B: Re-Rank with Cross-Encoder
-        if reranker and initial_results:
-            pairs = [[user_query, res['text']] for res in initial_results]
-            scores = reranker.predict(pairs)
-            for i, res in enumerate(initial_results):
-                res['rerank_score'] = scores[i]
-            top_results = sorted(initial_results, key=lambda x: x['rerank_score'], reverse=True)[:3]
-        else:
-            top_results = initial_results[:3]
-
-        # Step C: Build Context
-        combined_context = ""
-        sources = []
-        for res in top_results:
-            combined_context += f"SOURCE: {res['meta']}\nCONTENT: {res['text']}\n\n"
-            sources.append({"source": res['meta'], "relevance": "High", "context": res['text']})
-
-        # Step D: Fallback if no context found
-        if not combined_context:
-            return jsonify({
-                "response": "<p>I could not find verified information for this query in Kerala’s cyber laws.</p>",
-                "relevant_sections": []
+        # --- STEP 3: RE-RANKING (Local Cross-Encoder) ---
+        combined_results = []
+        for r in raw_results:
+            combined_results.append({
+                "type": r[0],
+                "meta": r[1],
+                "text": r[2],
+                "rrf_score": float(r[3])  # Cast float32 to native float
             })
 
-        # Step E: Generate Answer
-        full_prompt = f"{SYSTEM_PROMPT}\n\nCONTEXT:\n{combined_context}\n\nUSER QUERY: {user_query}"
-        ai_res = requests.post('http://localhost:11434/api/generate',
-                               json={"model": "llama3.2", "prompt": full_prompt, "stream": False, "options": {
-                                   "num_predict": 500,
-                                   "temperature": 0.3,
-                                   "num_ctx": 4096
-                               }}, timeout=60)
+        if reranker and combined_results:
+            pairs = [[user_query, res['text']] for res in combined_results]
+            scores = reranker.predict(pairs)
+            for i, res in enumerate(combined_results):
+                res['rerank_score'] = float(scores[i])
+            top_results = sorted(combined_results, key=lambda x: x['rerank_score'], reverse=True)[:3]
+        else:
+            top_results = combined_results[:3]
 
-        data = ai_res.json()
+        # --- STEP 4: CONTEXT & GENERATION ---
+        context_str = "".join(
+            [f"SOURCE ({res['type']}): {res['meta']}\nCONTENT: {res['text']}\n\n" for res in top_results])
+
+        if not top_results:
+            return jsonify(
+                {"response": "<p>I could not find verified information in the database.</p>", "relevant_sections": []})
+
+        ai_res = requests.post('http://localhost:11434/api/generate',
+                               json={
+                                   "model": "llama3.2",
+                                   "prompt": f"{SYSTEM_PROMPT}\n\nCONTEXT:\n{context_str}\n\nUSER QUERY: {user_query}",
+                                   "stream": False,
+                                   "options": {"num_predict": 500, "temperature": 0.2}
+                               }, timeout=60)
+
+        # Sanitize relevant_sections for JSON serialization
+        sanitized_sections = []
+        for res in top_results:
+            sanitized_sections.append({
+                "source": f"{res['type']}: {res['meta']}",
+                "context": res['text'][:200] + "...",
+                "relevance": "High"
+            })
+
         return jsonify(
-            {"response": data.get('response', 'Error generating response.'), "relevant_sections": sources}), 200
+            {"response": ai_res.json().get('response', 'Error'), "relevant_sections": sanitized_sections}), 200
 
     except Exception as e:
-        print(f"Detailed Search Error: {e}")
-        return jsonify({"message": "Search error", "error": str(e)}), 500
+        print(f"Version 3 Search Error: {e}", flush=True)
+        return jsonify({"message": "Internal search error"}), 500
     finally:
         conn.close()
-
-
-# --- BOILERPLATE ROUTES ---
+# --- BOILERPLATE ---
 @app.route('/')
 def index(): return render_template('chat.html')
-
 
 @app.route('/admin')
 def view_admin():
     if not session.get('admin_logged_in'): return redirect('/login')
     return render_template('admin.html')
 
-
 @app.route('/login')
 def view_login(): return render_template('login.html')
-
 
 if __name__ == '__main__':
     app.run(debug=True)
