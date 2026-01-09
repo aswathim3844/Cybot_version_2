@@ -228,6 +228,31 @@ without replacing legal professionals.
 
 Always prioritize accuracy over completeness."""
 
+# --- NEW: MALAYALAM SYSTEM PROMPT ---
+MALAYALAM_SYSTEM_PROMPT = """
+[YOUR ORIGINAL PROMPT HERE - COPY PASTE THE ENTIRE SYSTEM_PROMPT ABOVE]
+
+**CRUCIAL MALAYALAM OUTPUT INSTRUCTION:**
+- You must respond **only in Malayalam**.
+- The main body of your explanation, greetings, and all conversational text must be in Malayalam.
+- **CRITICAL EXCEPTION:** Do not translate specific legal acts, section numbers, or technical terms. Keep them in their original English form.
+    - Examples: "Information Technology Act, 2000", "Section 66A", "IPC", "Cyber Appellate Tribunal", "Phishing".
+- Format your response in valid HTML, just as described in the original prompt.
+- Your persona and all other rules from the original prompt remain the same.
+"""
+
+# --- NEW: SENIOR CITIZEN MODE INSTRUCTION ---
+SENIOR_CITIZEN_INSTRUCTION = """
+**IMPORTANT: SENIOR CITIZEN MODE ACTIVATED.**
+You MUST adhere to the following rules in addition to all previous instructions:
+- Use very simple, short, and clear sentences.
+- Explain complex legal terms in a very easy-to-understand way.
+- Be extra patient, empathetic, and encouraging in your tone.
+- Break down any procedures into simple, numbered steps.
+- Avoid using jargon. If a legal term is necessary, explain it immediately in parentheses.
+- Your goal is to make the user feel safe, understood, and confident.
+"""
+
 # --- ADMIN USERS ---
 ADMIN_USERS = {
     "admin": "$2b$12$.F9IaN6lMkcNi1N0hH3KlOHH9PZNUfe9OnB/qox4umBBphVEMNs2G"
@@ -455,24 +480,42 @@ def upload_chat_pdf():
 def chatbot_query():
     data = request.get_json()
     user_query = data.get('query', '').strip()
+    # NEW: Get language and mode from request
+    language = data.get('language', 'en')
+    mode = data.get('mode', 'normal')
+    
     if not user_query:
         return jsonify({"message": "Query required"}), 400
 
-    # --- NEW: GREETING & IDENTITY PRE-PROCESSING ---
-    # This catches "Who are you?", "Hi", etc., before the DB search
-    greetings = ['hi', 'hello', 'hey', 'good morning', 'who are you', 'what are you']
+    # --- GREETING & IDENTITY PRE-PROCESSING ---
+    greetings = ['hi', 'hello', 'hey', 'good morning', 'who are you', 'what are you', 'നമസ്കാരം']
     is_greeting = any(word in user_query.lower() for word in greetings)
 
     if is_greeting:
-        # Instead of returning a fixed string, we send a special prompt to the LLM
-        full_prompt = f"{SYSTEM_PROMPT}\n\nUSER QUERY: {user_query}\n\nINSTRUCTION: The user is greeting you or asking who you are. Respond warmly, introduce yourself as Cy-Bot, and invite them to ask about Kerala cyber laws. Use slightly different wording each time."
-
-        ai_res = requests.post('http://localhost:11434/api/generate',
-                               json={"model": "llama3.2", "prompt": full_prompt, "stream": False}, timeout=60)
-        return jsonify({"response": ai_res.json()['response'], "relevant_sections": []}), 200
-    # -----------------------------------------------
+        try:
+            # UPDATED: Construct the final prompt by combining base prompt and senior mode instruction
+            base_prompt = MALAYALAM_SYSTEM_PROMPT if language == 'ml' else SYSTEM_PROMPT
+            final_prompt = (SENIOR_CITIZEN_INSTRUCTION + base_prompt) if mode == 'senior' else base_prompt
+            
+            full_prompt = f"{final_prompt}\n\nUSER QUERY: {user_query}\n\nINSTRUCTION: The user is greeting you or asking who you are. Respond warmly, introduce yourself as Cy-Bot, and invite them to ask about Kerala cyber laws. Use slightly different wording each time."
+            
+            ai_res = requests.post('http://localhost:11434/api/generate',
+                                   json={"model": "llama3.2", "prompt": full_prompt, "stream": False}, timeout=60)
+            
+            res_data = ai_res.json()
+            if 'response' in res_data:
+                return jsonify({"response": res_data['response'], "relevant_sections": []}), 200
+            else:
+                fallback_greeting = "നമസ്കാരം! ഞാൻ സൈ-ബോട്ട്, കേരളത്തിലെ സൈബർ നിയമങ്ങളുടെ നിങ്ങളുടെ ഗൈഡ്. എങ്ങനെ സഹായിക്കാം?" if language == 'ml' else "Hello! I am Cy-Bot, your guide to Kerala's Cyber Laws. How can I assist you today?"
+                return jsonify({"response": fallback_greeting, "relevant_sections": []}), 200
+        except Exception as e:
+            print(f"Ollama Greeting Error: {e}")
+            return jsonify({"response": "Greetings! I am Cy-Bot. How can I assist you with Kerala's cyber laws today?", "relevant_sections": []}), 200
 
     conn = get_db_connection()
+    if conn is None:
+        return jsonify({"message": "Database connection failed. Please check your .env configuration."}), 500
+        
     cur = conn.cursor()
 
     try:
@@ -482,7 +525,7 @@ def chatbot_query():
         cur.execute("""SELECT c.chapter, c.section, le.section_text, le.embedding <-> %s AS score 
                        FROM law_embeddings le 
                        JOIN cyber_laws c ON le.law_section_id = c.law_section_id 
-                       WHERE (le.embedding <-> %s) < 0.60 
+                       WHERE (le.embedding <-> %s) < 0.80
                        ORDER BY score ASC LIMIT 10;""", (query_embedding, query_embedding))
 
         initial_results = []
@@ -492,6 +535,8 @@ def chatbot_query():
                 "meta": f"{r[0]} - {r[1]}",
                 "score": r[3]
             })
+
+        print(f"DEBUG: Found {len(initial_results)} initial results from DB with threshold 0.80")
 
         # Step B: Re-Rank with Cross-Encoder
         if reranker and initial_results:
@@ -512,28 +557,32 @@ def chatbot_query():
 
         # Step D: Generate Answer
         if not combined_context:
-            # Fallback for out-of-scope legal queries
-            return jsonify({
-                "response": "<p>I could not find verified information for this query in Kerala’s cyber laws. "
-                            "Please try rephrasing or consulting a legal professional.</p>",
-                "relevant_sections": []
-            })
+            fallback_response = "<p>കേരളത്തിലെ സൈബർ നിയമങ്ങളിൽ ഈ ചോദ്യത്തിന് സ്ഥിരീകരിച്ച വിവരങ്ങൾ ഞാൻ കണ്ടെത്താനായില്ല. ദയവായി വീണ്ടും രൂപപ്പെടുത്തുക അല്ലെങ്കിൽ ഒരു നിയമ വിദഗ്ധനെ കാണുക.</p>" if language == 'ml' else "<p>I could not find verified information for this query in Kerala’s cyber laws. Please try rephrasing or consulting a legal professional.</p>"
+            return jsonify({"response": fallback_response, "relevant_sections": []})
 
+        # UPDATED: Construct the final prompt by combining base prompt and senior mode instruction
+        base_prompt = MALAYALAM_SYSTEM_PROMPT if language == 'ml' else SYSTEM_PROMPT
+        final_prompt = (SENIOR_CITIZEN_INSTRUCTION + base_prompt) if mode == 'senior' else base_prompt
+        
         # Inject the V1 Personality and Context
-        full_prompt = f"{SYSTEM_PROMPT}\n\nCONTEXT:\n{combined_context}\n\nUSER QUERY: {user_query}"
+        full_prompt = f"{final_prompt}\n\nCONTEXT:\n{combined_context}\n\nUSER QUERY: {user_query}"
 
         ai_res = requests.post('http://localhost:11434/api/generate',
                                json={"model": "llama3.2", "prompt": full_prompt, "stream": False,"options": {
-                                   "num_predict": 100,  # Stops the bot after ~100-150 words (Saves time)
-                                   "temperature": 0.5,  # Balanced: precise but still human-like
+                                   "num_predict": 500,  
+                                   "temperature": 0.5,  
                                    "top_p": 0.9,
-                                   "num_ctx": 2048  # Smaller context window for faster processing
-
+                                   "num_ctx": 4096  
         }}, timeout=60)
 
-        return jsonify({"response": ai_res.json()['response'], "relevant_sections": sources}), 200
+        data = ai_res.json()
+        if 'response' in data:
+            return jsonify({"response": data['response'], "relevant_sections": sources}), 200
+        else:
+            return jsonify({"message": "Ollama did not return a valid response."}), 500
 
     except Exception as e:
+        print(f"Detailed Search Error: {e}")
         return jsonify({"message": "Search error", "error": str(e)}), 500
     finally:
         conn.close()
