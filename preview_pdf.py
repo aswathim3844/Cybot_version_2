@@ -3,7 +3,7 @@ import json
 import os
 
 # --- SETUP ---
-PDF_PATH = "C:/Users/aswat/Downloads/new_cyber_law.pdf"  # <--- UPDATE THIS
+PDF_PATH = "C:/Users/leksh/Downloads/new_cyber_law.pdf"  # <--- UPDATE THIS
 TOKEN = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6ImFkbWluIiwiZXhwIjoxNzY1OTQ3MDU1fQ.pR4Y-G73gGGSH1lwA1eMWhQNlWdUNjpaki_LihzhC7A"  # <--- UPDATE THIS
 URL = "http://127.0.0.1:5000/api/admin/pdf/preview/"
 

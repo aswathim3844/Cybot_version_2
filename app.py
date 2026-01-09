@@ -15,7 +15,7 @@ import os
 import json
 import requests
 import uuid
-
+from decimal import Decimal
 # NEW IMPORTS FOR ENV & RAG
 from dotenv import load_dotenv
 import fitz
@@ -38,8 +38,7 @@ DB_USER = os.getenv("DB_USER", "postgres")
 VAULT_KEY = os.getenv("VAULT_KEY", "CyberVigilance2025")
 
 # --- V1 SYSTEM PROMPT (THE PERSONALITY) ---
-SYSTEM_PROMPT ="""
-
+SYSTEM_PROMPT = """
 YOUR ROLE
 ---------
 You are Cy-Bot, a highly specialized and professional AI assistant for Kerala Cyber Laws.
@@ -63,7 +62,6 @@ PERSONALITY ENHANCEMENT
 - Vary your greetings: sometimes use "Hello!", sometimes "Greetings!", or "Hi there!".
 - Use "Thinking Aloud" phrases occasionally, like "I'd be happy to help with that" or "That's a great question about our laws."
 - Avoid stiff, overly formal phrasing like "Your query has been noted."
-
 
 SCOPE OF KNOWLEDGE
 ------------------
@@ -90,24 +88,22 @@ FORMATTING RULES (STRICT)
 - **Lists:** Use `<ul>` and `<li>` for any steps or multiple items.
 - **Emphasis:** Use `<strong>` for law sections or key terms only.
 - **NO YAPPING:** Do add some conversational filler like "I'd be happy to help you understand..."  after providing the facts.
- 
- 
+
+
  RESPONSE PROCESS
 ---------------------
-⦁	**Analyze:** Carefully read the User's Question and the provided Context.
-⦁	**Synthesize:** Formulate a clear, concise, and helpful answer using only the information from the Context.
-⦁	**Cite:** When you use information from a specific source in the context, you MUST cite it using the format `[Source X]`.
-⦁	**Format:** Structure your response for readability using Markdown (e.g., headings, bullet points).
-⦁	**Disclaimer:** End your response with the mandatory legal disclaimer. I am an AI assistant and not a qualified legal professional. The information provided is for general informational purposes only and should not be considered as legal advice. For specific legal issues, please consult with a qualified lawyer.
-⦁	**UNCERTAINTY HANDLING:** "Based on the available cyber laws I have access to, [provide information]. For the most current or situation-specific interpretation, I recommend consulting legal authorities or using the document upload feature for precise analysis."
-⦁	**THANK YOU/CONCLUSION PROTOCOL:**"You're welcome. Remember, for complex legal matters, the document upload feature can provide more precise analysis. Stay safe online!"
-⦁	**SPECIAL FEATURE ANNOUNCEMENT:**"When asking about specific documents or needing analysis of particular legal text, consider using our PDF upload feature. I can extract and explain relevant cyber law sections from your uploaded documents."
-⦁	**CONFIDENCE LEVELS:**
+⦁   **Analyze:** Carefully read the User's Question and the provided Context.
+⦁   **Synthesize:** Formulate a clear, concise, and helpful answer using only the information from the Context.
+⦁   **Cite:** When you use information from a specific source in the context, you MUST cite it using the format `[Source X]`.
+⦁   **Format:** Structure your response for readability using Markdown (e.g., headings, bullet points).
+⦁   **Disclaimer:** End your response with the mandatory legal disclaimer. I am an AI assistant and not a qualified legal professional. The information provided is for general informational purposes only and should not be considered as legal advice. For specific legal issues, please consult with a qualified lawyer.
+⦁   **UNCERTAINTY HANDLING:** "Based on the available cyber laws I have access to, [provide information]. For the most current or situation-specific interpretation, I recommend consulting legal authorities or using the document upload feature for precise analysis."
+⦁   **THANK YOU/CONCLUSION PROTOCOL:**"You're welcome. Remember, for complex legal matters, the document upload feature can provide more precise analysis. Stay safe online!"
+⦁   **SPECIAL FEATURE ANNOUNCEMENT:**"When asking about specific documents or needing analysis of particular legal text, consider using our PDF upload feature. I can extract and explain relevant cyber law sections from your uploaded documents."
+⦁   **CONFIDENCE LEVELS:**
    - High confidence: Direct quotes from cyber laws, standard procedures
    - Medium confidence: Common interpretations, established precedents
    - Low confidence: Emerging areas, state-specific variations (always note this)
-
-
 
 DATA SOURCES & TRUST RULES
 --------------------------
@@ -121,14 +117,14 @@ DO NOT:
 • Use general world knowledge
 • Guess or hallucinate laws
 • Invent sections, punishments, or procedures
-⦁	 General legal advice
-⦁	 non-cyber laws
-⦁	 personal opinions
-⦁	 political matters
-⦁	 unrelated technical issues
-⦁	 entertainment
-⦁	 personal counseling
-⦁	If no relevant information exists, clearly say so.
+⦁    General legal advice
+⦁    non-cyber laws
+⦁    personal opinions
+⦁    political matters
+⦁    unrelated technical issues
+⦁    entertainment
+⦁    personal counseling
+⦁   If no relevant information exists, clearly say so.
 
 SOURCE ATTRIBUTION (MANDATORY)
 ------------------------------
@@ -153,7 +149,7 @@ If the user intent is:
    -**GREETING PROTOCOL:**
    "Welcome to Cy-Bot, your official government cyber law assistant. I'm here to help you with questions about cyber security laws, IT regulations, data protection, and related legal matters. How may I assist you today?"
    - Do NOT try to find legal definitions for greetings.
- 
+
 
 2. LAW SECTION / PENALTY
    • Answer in structured format:
@@ -178,8 +174,8 @@ FORMATTING RULES (STRICT)
 • DO NOT use Markdown (*, **, ###)
 • DO NOT use emojis excessively
 • Keep language simple and professional
-⦁	  Lists: Use `<ul>` and `<li>` for penalties or steps.
-⦁	  Citations:End sentences with the source (e.g., *...punishable by 3 years. [Source: IT Act 2000]*).
+⦁     Lists: Use `<ul>` and `<li>` for penalties or steps.
+⦁     Citations:End sentences with the source (e.g., *...punishable by 3 years. [Source: IT Act 2000]*).
 
 LEGAL & SAFETY RULES
 --------------------
@@ -214,12 +210,12 @@ TONE & STYLE
 • Supportive (especially for victims)
 • Non-judgmental
 • Clear and concise
-⦁	professional but approachable
-⦁	Explain legal terms in **simple English**.
-⦁	If a punishment is severe, warn the user politely.
-⦁	Clear, unambiguous language
-⦁	No humor, no informal slang
-⦁	Gender-neutral language
+⦁   professional but approachable
+⦁   Explain legal terms in **simple English**.
+⦁   If a punishment is severe, warn the user politely.
+⦁   Clear, unambiguous language
+⦁   No humor, no informal slang
+⦁   Gender-neutral language
 
 END GOAL
 --------
@@ -235,7 +231,15 @@ ADMIN_USERS = {
 
 # --- GLOBAL STORES ---
 session_pdf_store: Dict[str, Any] = {}
-nltk.download('punkt', quiet=True)
+
+# FIX: Download BOTH punkt and punkt_tab to prevent server crash
+try:
+    nltk.data.find('tokenizers/punkt')
+    nltk.data.find('tokenizers/punkt_tab')
+except LookupError:
+    nltk.download('punkt', quiet=True)
+    nltk.download('punkt_tab', quiet=True)
+
 from nltk.tokenize import sent_tokenize
 
 # --- EMBEDDING MODELS ---
@@ -383,35 +387,80 @@ def preview_pdf(current_user):
 @token_required
 def confirm_pdf_ingestion(current_user):
     data = request.get_json()
-    filename, final_text = data.get('filename', 'Unknown.pdf'), data.get('final_text')
-    if not final_text: return jsonify({"message": "No text provided."}), 400
+    filename = data.get('filename', 'Unknown.pdf')
+    final_text = data.get('final_text')
+
+    if not final_text:
+        return jsonify({"message": "No text provided."}), 400
+
     conn = get_db_connection()
     cur = conn.cursor()
+
+    stats = {"inserted": 0, "updated": 0, "skipped": 0}
+
     try:
+        # Save the master document record
         cur.execute("INSERT INTO uploaded_documents (file_name, raw_pdf_data) VALUES (%s, %s) RETURNING document_id;",
                     (filename, final_text.encode('utf-8')))
         doc_id = cur.fetchone()[0]
         log_event(conn, 'uploaded_documents', doc_id, 'UPLOAD_PDF', None, {"file": filename}, current_user)
 
         chunks = chunk_text(final_text)
+
         for i, chunk in enumerate(chunks):
+            # Versioning & Conflict Detection Logic
+            chapter_name = filename
+            section_label = f"Part {i + 1}"
+
+            cur.execute("""
+                SELECT law_section_id, description, version_number 
+                FROM cyber_laws 
+                WHERE chapter = %s AND section = %s AND is_active = TRUE;
+            """, (chapter_name, section_label))
+
+            existing_record = cur.fetchone()
+
+            if existing_record:
+                old_id, old_desc, old_version = existing_record
+
+                # Check for exact duplicate
+                if old_desc.strip() == chunk.strip():
+                    stats["skipped"] += 1
+                    continue  # Skip this chunk as it already exists exactly as is
+
+                # If content is different, perform Versioning (Phase 1, Item 15)
+                cur.execute("UPDATE cyber_laws SET is_active = FALSE WHERE law_section_id = %s;", (old_id,))
+                new_version = old_version + 1
+                stats["updated"] += 1
+            else:
+                new_version = 1
+                stats["inserted"] += 1
+
+            # Insert new version or new record
             sec_name = f"{filename} - Chunk {i + 1}"
             cur.execute("""
-                INSERT INTO cyber_laws (chapter, section, section_name, description, punishment, document_id) 
-                VALUES (%s, %s, %s, %s, %s, %s) RETURNING law_section_id;
-            """, (filename, f"Part {i + 1}", sec_name, chunk, "N/A", doc_id))
+                INSERT INTO cyber_laws (chapter, section, section_name, description, punishment, document_id, version_number, is_active) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE) RETURNING law_section_id;
+            """, (chapter_name, section_label, sec_name, chunk, "N/A", doc_id, new_version))
+
             law_id = cur.fetchone()[0]
             log_event(conn, 'cyber_laws', law_id, 'BULK_INGEST', None, {"source": filename, "chunk": i + 1},
                       current_user)
 
+            # Generate AI Embedding (Fixed numpy to list conversion)
             emb = create_embedding_vector(filename, sec_name, chunk)
             cur.execute("INSERT INTO law_embeddings (law_section_id, section_text, embedding) VALUES (%s, %s, %s);",
-                        (law_id, chunk, emb))
+                        (law_id, chunk, emb.tolist()))
 
         conn.commit()
-        return jsonify({"message": "Ingestion Complete.", "chunks_stored": len(chunks)}), 201
+        return jsonify({
+            "message": "Ingestion Complete.",
+            "stats": stats
+        }), 201
+
     except Exception as e:
         conn.rollback()
+        print(f"Error trace: {e}")
         return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
@@ -450,6 +499,7 @@ def upload_chat_pdf():
         }), 200
     except Exception as e:
         return jsonify({"message": "Error processing PDF", "error": str(e)}), 500
+
 
 @app.route('/api/query', methods=['POST'])
 def chatbot_query():
@@ -523,13 +573,13 @@ def chatbot_query():
         full_prompt = f"{SYSTEM_PROMPT}\n\nCONTEXT:\n{combined_context}\n\nUSER QUERY: {user_query}"
 
         ai_res = requests.post('http://localhost:11434/api/generate',
-                               json={"model": "llama3.2", "prompt": full_prompt, "stream": False,"options": {
+                               json={"model": "llama3.2", "prompt": full_prompt, "stream": False, "options": {
                                    "num_predict": 100,  # Stops the bot after ~100-150 words (Saves time)
                                    "temperature": 0.5,  # Balanced: precise but still human-like
                                    "top_p": 0.9,
                                    "num_ctx": 2048  # Smaller context window for faster processing
 
-        }}, timeout=60)
+                               }}, timeout=60)
 
         return jsonify({"response": ai_res.json()['response'], "relevant_sections": sources}), 200
 
@@ -564,9 +614,15 @@ def view_login():
 
 
 # --- UNIVERSAL CRUD ---
-TABLE_CONFIG = {'cyber_laws': 'law_section_id', 'scam_advisories': 'advisory_id', 'cybercells': 'cell_id',
-                'legal_guidance': 'guidance_id', 'reporting_procedures': 'procedure_id', 'user_queries': 'query_id',
-                'audit_logs': 'log_id'}
+TABLE_CONFIG = {
+    'cyber_laws': 'law_section_id',
+    'scam_advisories': 'scam_id',
+    'cybercells': 'station_id',
+    'legal_guidance': 'crime_id',  # FIXED: Changed from guidance_id to crime_id
+    'reporting_procedures': 'report_id',
+    'user_queries': 'query_id',
+    'audit_logs': 'log_id'
+}
 
 
 @app.route('/api/admin/universal/<table_name>', methods=['GET', 'POST'])
@@ -574,7 +630,6 @@ TABLE_CONFIG = {'cyber_laws': 'law_section_id', 'scam_advisories': 'advisory_id'
 def universal_crud(current_user, table_name):
     if table_name not in TABLE_CONFIG: return jsonify({"message": "Invalid table"}), 400
 
-    # Audit Vault Security
     if table_name == 'audit_logs' and request.method != 'GET':
         return jsonify({"message": "Logs are Immutable"}), 405
     if table_name == 'audit_logs' and request.headers.get('X-Vault-Key') != VAULT_KEY:
@@ -583,11 +638,76 @@ def universal_crud(current_user, table_name):
     pk = TABLE_CONFIG[table_name]
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+    # --- GET (READ) ---
     if request.method == 'GET':
-        cur.execute(f"SELECT * FROM {table_name} ORDER BY {pk} DESC LIMIT 100")
-        return jsonify([dict(r) for r in cur.fetchall()])
+        try:
+            cur.execute(f"SELECT * FROM {table_name} WHERE is_active = TRUE ORDER BY {pk} DESC LIMIT 100")
+        except psycopg2.Error:
+            conn.rollback()
+            cur.execute(f"SELECT * FROM {table_name} ORDER BY {pk} DESC LIMIT 100")
+
+        rows = []
+        for r in cur.fetchall():
+            row_dict = dict(r)
+            for k, v in row_dict.items():
+                if isinstance(v, Decimal):
+                    row_dict[k] = float(v)
+                elif isinstance(v, (datetime.date, datetime.datetime)):
+                    row_dict[k] = v.isoformat()
+                # Display Lists as "Text" in the frontend
+                elif isinstance(v, list):
+                    row_dict[k] = ", ".join(str(x) for x in v)
+            rows.append(row_dict)
+        return jsonify(rows)
+
+    # --- POST (CREATE) ---
     if request.method == 'POST':
         data = request.get_json()
+
+        # ======================================================
+        # 🛠️ FIX: CONVERT TEXT BACK TO ARRAY FOR DATABASE
+        # This fixes the "malformed array literal" error
+        # ======================================================
+        if table_name == 'legal_guidance' and 'applicable_laws' in data:
+            raw_val = data['applicable_laws']
+            # If the user sent a string "Sec A, Sec B", turn it into ["Sec A", "Sec B"]
+            if isinstance(raw_val, str):
+                data['applicable_laws'] = [x.strip() for x in raw_val.split(',') if x.strip()]
+
+        # Also check Cyber Cells if you use arrays there (e.g. services)
+        if table_name == 'cybercells' and 'services' in data:
+            if isinstance(data['services'], str):
+                data['services'] = [x.strip() for x in data['services'].split(',') if x.strip()]
+        # ======================================================
+
+        # Conflict Detection Logic
+        lookup_map = {
+            'scam_advisories': 'scam_name',
+            'cybercells': 'station_name',
+            'reporting_procedures': 'crime_type',
+            'cyber_laws': 'section',
+            'legal_guidance': 'crime_type'
+        }
+        lookup_col = lookup_map.get(table_name)
+
+        if lookup_col and lookup_col in data:
+            try:
+                cur.execute(
+                    f"SELECT {pk}, version_number FROM {table_name} WHERE {lookup_col} = %s AND is_active = TRUE",
+                    (data[lookup_col],))
+                existing = cur.fetchone()
+
+                if existing:
+                    old_id, old_version = existing
+                    cur.execute(f"UPDATE {table_name} SET is_active = FALSE WHERE {pk} = %s", (old_id,))
+                    data['version_number'] = (old_version or 1) + 1
+                else:
+                    data['version_number'] = 1
+                data['is_active'] = True
+            except psycopg2.Error:
+                conn.rollback()
+
         cols = [k for k in data.keys() if k != pk]
         cur.execute(
             f"INSERT INTO {table_name} ({','.join(cols)}) VALUES ({','.join(['%s'] * len(cols))}) RETURNING {pk}",
@@ -614,21 +734,49 @@ def universal_item_ops(current_user, table_name, record_id):
         try:
             if table_name == 'cyber_laws':
                 cur.execute("DELETE FROM law_embeddings WHERE law_section_id=%s", (record_id,))
-            cur.execute(f"DELETE FROM {table_name} WHERE {pk}=%s", (record_id,))
+
+            # Try Soft Delete (Archive)
+            try:
+                cur.execute(f"UPDATE {table_name} SET is_active = FALSE WHERE {pk}=%s", (record_id,))
+            except psycopg2.Error:
+                conn.rollback()
+                cur.execute(f"DELETE FROM {table_name} WHERE {pk}=%s", (record_id,))
+
             log_event(conn, table_name, record_id, 'DELETE', dict(old), None, current_user)
             conn.commit()
-            return jsonify({"msg": "Deleted successfully"})
+            return jsonify({"msg": "Deleted/Archived successfully"})
         except Exception as e:
             conn.rollback()
             return jsonify({"msg": "Delete failed", "error": str(e)}), 500
 
     if request.method == 'PUT':
         data = request.get_json()
+
+        # ======================================================
+        # 🛠️ FIX FOR EDITING: CONVERT TEXT BACK TO ARRAY
+        # This prevents crashes when updating Cyber Cells or Legal Guidance
+        # ======================================================
+        # 1. Fix Legal Guidance (applicable_laws)
+        if table_name == 'legal_guidance' and 'applicable_laws' in data:
+            if isinstance(data['applicable_laws'], str):
+                data['applicable_laws'] = [x.strip() for x in data['applicable_laws'].split(',') if x.strip()]
+
+        # 2. Fix Cyber Cells (services)
+        if table_name == 'cybercells' and 'services' in data:
+            if isinstance(data['services'], str):
+                data['services'] = [x.strip() for x in data['services'].split(',') if x.strip()]
+        # ======================================================
+
         set_clause = ", ".join([f"{k}=%s" for k in data.keys() if k != pk])
-        cur.execute(f"UPDATE {table_name} SET {set_clause} WHERE {pk}=%s", list(data.values()) + [record_id])
-        log_event(conn, table_name, record_id, 'UPDATE', dict(old), data, current_user)
-        conn.commit()
-        return jsonify({"msg": "Updated"})
+        try:
+            cur.execute(f"UPDATE {table_name} SET {set_clause} WHERE {pk}=%s", list(data.values()) + [record_id])
+            log_event(conn, table_name, record_id, 'UPDATE', dict(old), data, current_user)
+            conn.commit()
+            return jsonify({"msg": "Updated"})
+        except Exception as e:
+            conn.rollback()
+            print(f"Update Error: {e}")
+            return jsonify({"msg": "Update Failed", "error": str(e)}), 500
 
 
 @app.route('/api/admin/history/<table_name>/<int:record_id>', methods=['GET'])
@@ -639,6 +787,56 @@ def get_history(current_user, table_name, record_id):
     cur.execute("SELECT * FROM audit_logs WHERE table_name=%s AND record_id=%s ORDER BY log_id DESC",
                 (table_name, record_id))
     return jsonify([dict(r) for r in cur.fetchall()])
+
+
+# --- NEW: VERSION HISTORY VIEWER ---
+@app.route('/api/admin/versions/<table_name>', methods=['POST'])
+@token_required
+def view_versions(current_user, table_name):
+    """
+    Retrieve all versions (Active and Archived) of a specific record
+    based on its unique name (e.g., 'Section 66F', 'Phishing Scam').
+    """
+    if table_name not in TABLE_CONFIG:
+        return jsonify({"message": "Invalid table"}), 400
+
+    data = request.get_json()
+
+    # Define which column identifies the "item" for each table
+    lookup_map = {
+        'scam_advisories': 'scam_name',
+        'cybercells': 'station_name',
+        'reporting_procedures': 'crime_type',
+        'cyber_laws': 'section',
+        'legal_guidance': 'crime_type'
+    }
+
+    lookup_col = lookup_map.get(table_name)
+    search_value = data.get('identifier')  # e.g., "Section 66F"
+
+    if not lookup_col or not search_value:
+        return jsonify({"message": "Cannot version this table or missing identifier"}), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+    try:
+        # Fetch ALL records (Active=True AND Active=False) matching that name
+        # Ordered by version number so you see the timeline (v1, v2, v3...)
+        query = f"SELECT * FROM {table_name} WHERE {lookup_col} = %s ORDER BY version_number DESC"
+        cur.execute(query, (search_value,))
+        versions = [dict(r) for r in cur.fetchall()]
+
+        return jsonify({
+            "table": table_name,
+            "identifier": search_value,
+            "total_versions": len(versions),
+            "history": versions
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
 
 
 if __name__ == '__main__':

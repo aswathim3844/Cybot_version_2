@@ -8,7 +8,7 @@ import pgvector.psycopg2
 DB_HOST = "localhost"
 DB_NAME = "cyber_law_db"  # Must match your database name
 DB_USER = "postgres"  # Your PostgreSQL username
-DB_PASS = "Aswathim3844@postgresql"  # **REPLACE THIS WITH YOUR ACTUAL PASSWORD**
+DB_PASS = "lekshmihr@12"  # **REPLACE THIS WITH YOUR ACTUAL PASSWORD**
 
 # Initialize the embedding model once. 'all-MiniLM-L6-v2' is small and fast.
 model = SentenceTransformer('all-MiniLM-L6-v2')
